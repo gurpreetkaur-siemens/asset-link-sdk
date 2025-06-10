@@ -1,0 +1,66 @@
+stages:
+  -lint
+  -build
+  -unit-test
+  -integ-test
+  -containerize
+
+variables:
+  PROJECT_NAME: "{{ cookiecutter.al_project }}"
+  PROJECT_DIR: "{{ cookiecutter.al_project }}"
+  DOCKER_IMAGE: "{{ cookiecutter.al_project }}:latest"
+  GO_VERSION: "1.23"
+  GO_LINT_VERSION: "v2.1"
+
+before_script:
+  - echo "Setting up environment for $PROJECT_NAME"
+  - export GOPATH=$CI_PROJECT_DIR/go
+  - export PATH=$GOPATH/bin:$PATH
+  - mkdir -p $GOPATH/src/$PROJECT_DIR
+  - cp -r ./* $GOPATH/src/$PROJECT_DIR/
+  - cd $GOPATH/src/$PROJECT_DIR
+
+build:
+  stage: build
+  image: golang:$GO_VERSION
+  script:
+    - echo "Building $PROJECT_NAME"
+    - go build -v ./...
+
+lint:
+  stage: lint
+  image: golangci/golangci-lint:$GO_LINT_VERSION
+  script:
+    - echo "Running golangci-lint"
+    - golangci-lint run --timeout 5m
+
+unit-test:
+  stage: unit-test
+  image: golang:$GO_VERSION
+  script:
+    - echo "Running unit tests for $PROJECT_NAME"
+    - go test -v ./...
+
+integ-test:
+  stage: integration-test
+  image: golang:$GO_VERSION
+  script:
+    - echo "Running integration tests for $PROJECT_NAME"
+    - if [ -f ./testsuite.sh ]; then
+        bash ./testsuite.sh;
+      else
+        echo "No integration test suite found.";
+      fi
+
+containerize:
+  stage: containerize
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "Building Docker image for $PROJECT_NAME"
+    - docker build -t $DOCKER_IMAGE .
+    - echo "Pushing Docker image to registry"
+    - docker push $DOCKER_IMAGE
+  only:
+    - main
